@@ -34,7 +34,12 @@ export default function App({countriesInitialData}) {
   const { data, error, mutate, size, setSize, isValidating } = useSWRInfinite(offset => 
     [ GET_COUNTRIES, LIMIT, offset], 
     countryFetcher,
-    { initialData: [countriesInitialData]}
+    { initialData: [countriesInitialData], 
+      revalidateAll: false,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateOnMount: false
+    }
   )
 
   error && console.log(error)
