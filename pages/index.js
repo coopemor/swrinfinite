@@ -1,65 +1,92 @@
-import Head from 'next/head'
-import styles from '../styles/Home.module.css'
+import React from "react";
+import { useSWRInfinite } from "swr";
+import { GraphQLClient, gql } from 'graphql-request'
 
-export default function Home() {
-  return (
-    <div className={styles.container}>
-      <Head>
-        <title>Create Next App</title>
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+const COUNTRY_ENDPOINT = "https://countries-274616.ew.r.appspot.com/"
+const LIMIT = 6
 
-      <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
+const GET_COUNTRIES = gql`query($limit: Int!, $offset: Int!) {
+	Country (first:$limit, offset:$offset) {
+    _id
+    name
+  }
+}
+`;
 
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.js</code>
-        </p>
+const hasuraGraphQLClient = new GraphQLClient(COUNTRY_ENDPOINT)
 
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h3>Documentation &rarr;</h3>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h3>Learn &rarr;</h3>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/master/examples"
-            className={styles.card}
-          >
-            <h3>Examples &rarr;</h3>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/import?filter=next.js&utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h3>Deploy &rarr;</h3>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
-      </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <img src="/vercel.svg" alt="Vercel Logo" className={styles.logo} />
-        </a>
-      </footer>
-    </div>
+const countryFetcher = (query, limit, offset) => 
+  ( 
+    hasuraGraphQLClient.request(
+      query, { 
+        limit: limit, 
+        offset: ( offset * limit ),
+      }).then(data => {
+        // console.log(data)
+        return data.Country
+    })
   )
+
+
+export default function App({countriesInitialData}) {
+  console.log(countriesInitialData)
+
+  const { data, error, mutate, size, setSize, isValidating } = useSWRInfinite(offset => 
+    [ GET_COUNTRIES, LIMIT, offset], 
+    countryFetcher,
+    { initialData: [countriesInitialData]}
+  )
+
+  error && console.log(error)
+  if (error) return <p>{JSON.stringify(error)}</p>
+
+  const countries = data ? [].concat(...data) : [];
+  const isLoadingInitialData = !data && !error;
+  const isLoadingMore = isLoadingInitialData || (data && typeof data[size - 1] === "undefined");
+
+  const isEmpty = data?.[0]?.length === 0;
+  const isReachingEnd =
+    isEmpty || (data && data[data.length - 1]?.length < LIMIT);
+
+  return (
+    <div style={{ fontFamily: "sans-serif" }}>
+      <p>
+        showing {size} page(s) of {isLoadingMore ? "..." : countries.length}{" "}
+        countries{" "}
+        <button
+          disabled={isLoadingMore || isReachingEnd}
+          onClick={() => setSize(size + 1)}
+        >
+          {isLoadingMore
+            ? "loading..."
+            : isReachingEnd
+            ? "no more countries"
+            : "load more"}
+        </button>
+      </p>
+      {isEmpty ? <p>Yay, no countries found.</p> : null}
+      {countries.map((country) => {
+        return (
+          <p key={country.name} style={{ margin: "6px 0" }}>
+            - {country.name}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+export async function getStaticProps() {
+
+  const countriesInitialData = await countryFetcher(
+    GET_COUNTRIES, 
+    LIMIT, 
+    0
+  )
+
+  return {
+    props: { 
+      countriesInitialData
+    }
+  }
 }
